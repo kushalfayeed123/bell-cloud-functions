@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2017", // Target JavaScript version
+    "module": "commonjs", // Use CommonJS module system (for Node.js)
+    "strict": true, // Enable all strict type-checking options
+    "esModuleInterop": true, // Allow importing CommonJS modules
+    "skipLibCheck": true, // Skip type checking of declaration files
+    "forceConsistentCasingInFileNames": true, // Ensure consistent file naming
+    "outDir": "./lib", // Output compiled files to the "lib" folder
+    "moduleResolution": "node", // Use Node.js module resolution strategy
+    "resolveJsonModule": true, // Allow importing JSON files
+    "allowJs": false, // Don't allow JavaScript files in TypeScript compilation
+    "noEmitOnError": true // Don't emit output if there are errors
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "node_modules" // Exclude node_modules folder
+  ]
+}
