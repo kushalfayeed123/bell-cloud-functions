@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { onSchedule } from "firebase-functions/scheduler";
 admin.initializeApp();
 
 const db = admin.firestore();
@@ -39,6 +40,71 @@ interface Seat {
   bookedBy: string;
 }
 
+async function archiveLogic() {
+  const now = new Date();
+  const oneMonthAgo = new Date(now);
+  oneMonthAgo.setMonth(now.getMonth() - 1);
+
+  const activeBookingsSnapshot = await db
+    .collection("bookings")
+    .where("status", "==", "Active")
+    .get();
+
+  const batch = db.batch();
+  let count = 0;
+
+  activeBookingsSnapshot.forEach((doc) => {
+    const data = doc.data();
+    const departureDateStr = data.departureDate;
+
+    if (departureDateStr) {
+      const departureDate = new Date(departureDateStr);
+      if (!isNaN(departureDate.getTime()) && departureDate < oneMonthAgo) {
+        batch.update(doc.ref, { status: "Archived" });
+        count++;
+      }
+    }
+  });
+
+  if (count > 0) {
+    await batch.commit();
+    console.log(`${count} bookings archived.`);
+  } else {
+    console.log("No bookings to archive.");
+  }
+}
+
+export const archiveOldBookingsRequest = functions.https.onRequest(
+  async (req, res): Promise<void> => {
+    // Check if the request is a POST
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
+    try {
+      await archiveLogic();
+      res.status(200).send("Old bookings archived successfully");
+      return;
+    } catch (error) {
+      console.error("Error processing trips:", error);
+      res.status(500).send("Internal Server Error");
+    }
+  }
+);
+
+export const archiveOldBookings = onSchedule(
+  {
+    schedule: "every 24 hours",
+    timeZone: "Africa/Lagos",
+  },
+  async () => {
+    await archiveLogic();
+
+    return;
+  }
+);
+
 export const onVehicleUpdate = functions.firestore.onDocumentUpdated(
   "vehicles/{vehicleId}",
   async (event) => {
@@ -64,7 +130,7 @@ export const onVehicleUpdate = functions.firestore.onDocumentUpdated(
         .get();
 
       if (tripsSnapshot.size > 1) {
-        console.log("Multiple trips found. Terminating process.");
+        console.log("Multiple trips found. Terminating process.", vehicleId);
         return;
       }
 
@@ -122,7 +188,11 @@ export const onVehicleUpdate = functions.firestore.onDocumentUpdated(
       );
 
       if (invalidBookedSeats.length > 0) {
-        console.log("Resetting invalid booked seats:", invalidBookedSeats, vehicleId);
+        console.log(
+          "Resetting invalid booked seats:",
+          invalidBookedSeats,
+          vehicleId
+        );
 
         // Use a Firestore batch to reset invalid seats
         const batch = db.batch();
@@ -142,7 +212,6 @@ export const onVehicleUpdate = functions.firestore.onDocumentUpdated(
         const vehicleDocRef = db.collection("vehicles").doc(vehicleId);
         batch.update(vehicleDocRef, {
           seats: updatedSeats,
-          modifiedDate: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // Commit the batch
@@ -265,7 +334,6 @@ export const resetSeatsForTrips = functions.https.onRequest(
           const vehicleDocRef = db.collection("vehicles").doc(trip.vehicleId);
           batch.update(vehicleDocRef, {
             seats: updatedSeats,
-            modifiedDate: admin.firestore.FieldValue.serverTimestamp(),
           });
 
           // Commit the batch
